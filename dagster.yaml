@@ -1,0 +1,22 @@
+# dagster.yaml
+
+run_coordinator:
+  module: dagster.core.run_coordinator
+  class: QueuedRunCoordinator
+  config:
+    max_concurrent_runs: 10
+
+run_launcher:
+  module: dagster.core.launcher
+  class: DefaultRunLauncher
+
+storage:
+  sqlite:
+    base_dir: /tmp/dagster_home # Using a temp dir inside the container
+
+scheduler:
+  module: dagster.core.scheduler
+  class: DagsterDaemonScheduler
+
+telemetry:
+  enabled: false

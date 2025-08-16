@@ -1,0 +1,6 @@
+.python-version
+
+# any folder that has the pattern .tmp_dagster
+
+# Dagster temporary directories
+.tmp_dagster*
