@@ -1,7 +1,7 @@
-from dagster import asset, Output, Config
-import io
+from dagster import asset, Output, Config, op, Failure
+import subprocess
+import time
 import os
-import pandas as pd
 
 # Define a configuration class for the asset
 class CryptoEcosystemsConfig(Config):
@@ -43,27 +43,111 @@ def crypto_ecosystems_projects_asset(context, config: CryptoEcosystemsConfig):
         }
     )
 
-@asset(
-    deps=["crypto_ecosystems_projects_asset"],
-    description="Uploads the crypto ecosystems DataFrame to Walrus as a Parquet file.",
-    required_resource_keys={"walrus"}
-)
-def crypto_ecosystems_walrus_asset(context, crypto_ecosystems_projects_asset: pd.DataFrame):
+# Clones the repo, exports data, and uploads to Walrus
+@asset(required_resource_keys={"crypto_ecosystems"})
+def export_and_upload_ecosystem_asset(context, config: CryptoEcosystemsConfig) -> str:
     """
-    Takes the upstream DataFrame, converts it to a Parquet file in memory,
-    and uploads it to Walrus.
+    An asset that uses the CryptoEcosystemsResource to clone, export, compress,
+    and upload a dataset to Walrus.
+    
+    Returns:
+        str: The blob_id of the uploaded file.
     """
-    parquet_buffer = io.BytesIO()
-    crypto_ecosystems_projects_asset.to_parquet(parquet_buffer, index=False)
-    parquet_buffer.seek(0)
-
-    blob_id = context.resources.walrus.upload(data=parquet_buffer.getvalue())
-
-    yield Output(
-        value=blob_id,
-        metadata={
-            "blob_id": blob_id,
-            "filename": "crypto_ecosystems.parquet",
-            "num_records": len(crypto_ecosystems_projects_asset)
-        }
+    context.log.info(f"Starting export for {config.ecosystem} ecosystem...")
+    
+    crypto_ecosystems_resource = context.resources.crypto_ecosystems
+    
+    blob_id = crypto_ecosystems_resource._update_repo_and_upload_export(
+        ecosystem_name=config.ecosystem
     )
+    
+    return blob_id
+
+# asset to create the GRC-20 index entry
+@asset(required_resource_keys={"crypto_ecosystems"})
+def create_grc20_index_entry_asset(context, config: CryptoEcosystemsConfig):
+    """
+    Triggers the TypeScript script to create an on-chain index entry for a new blob.
+    The output of the upstream `export_and_upload_ecosystem_asset` asset is passed in as the `ecosystem_blob` argument.
+    """
+    context.log.info(f"Starting export for {config.ecosystem} ecosystem...")
+    
+    crypto_ecosystems_resource = context.resources.crypto_ecosystems
+    
+    blob_id = crypto_ecosystems_resource._update_repo_and_upload_export(
+        ecosystem_name=config.ecosystem
+    )
+    context.log.info(f"Creating GRC-20 index for blob_id: {blob_id}")
+    
+    upload_timestamp = str(int(time.time()))
+    
+    # Get the absolute path to the directory where this Python script is located
+    # In a Dagster context, __file__ points to the location of assets.py
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # Construct the absolute path to the Node.js script
+    # Go up one level from 'assets' to the 'dagster_project' directory
+    # then down into 'hypergraph/dist/addIndexEntry.js'
+    node_script_path = os.path.join(
+        script_dir, # e.g., /opt/dagster/app/dagster_project/assets
+        "..",       # Go up to /opt/dagster/app/dagster_project
+        "hypergraph",
+        "dist",
+        "addIndexEntry.js"
+    )
+    
+    node_script_path = os.path.normpath(node_script_path)
+    # run the command
+    command = ["node", node_script_path, blob_id, upload_timestamp]
+
+    # The working directory can be the root of the project
+    working_dir = os.path.join(script_dir, "..") # /opt/dagster/app/dagster_project
+
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=working_dir # Use the calculated working directory
+        )
+        context.log.info("Node.js script executed successfully:")
+        context.log.info(result.stdout)
+    except subprocess.CalledProcessError as e:
+        context.log.error(f"Node.js script failed:\n{e.stderr}")
+        raise Failure(description=f"Node.js script execution failed. Stderr: {e.stderr}") from e
+    except FileNotFoundError:
+        context.log.error(f"Could not find the script at the specified path: {node_script_path}")
+        raise
+
+# setup the hypergraph schema
+@op
+def setup_hypergraph_schema_op(context):
+    """
+    Runs the one-time setup script to create the GRC-20 Space and Schema.
+    
+    This op should only be run once to initialize the hypergraph environment.
+    The script's output will contain the new space ID, which should be manually
+    added to the .env file as 'existing_space_id'.
+    """
+    context.log.info("Starting one-time Hypergraph schema setup...")
+    
+    command = ["node", "hypergraph/dist/createIndexEntry.js"]
+
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd="/opt/dagster/app/"
+        )
+        context.log.info("Schema setup script executed successfully:")
+        context.log.info(result.stdout)
+        context.log.warning(
+            "ACTION REQUIRED: Copy the 'New space created with ID' from the logs above "
+            "and set it as the 'existing_space_id' in your .env file."
+        )
+    except subprocess.CalledProcessError as e:
+        context.log.error(f"Schema setup script failed:\n{e.stderr}")
+        raise Failure(description=f"Node.js setup script failed. Stderr: {e.stderr}") from e

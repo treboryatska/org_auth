@@ -1,0 +1,23 @@
+{
+  "name": "hypergraph-indexer",
+  "version": "1.0.0",
+  "description": "GRC-20 indexer script",
+  "main": "dist/createIndexEntry.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/createIndexEntry.js"
+  },
+  "dependencies": {
+    "@graphprotocol/grc-20": "latest",
+    "dotenv": "^17.2.1",
+    "graphql": "^16.11.0",
+    "graphql-request": "^7.2.0",
+    "ox": "0.6.7",
+    "viem": "2.33.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.2.2"
+  }
+}

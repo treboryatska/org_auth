@@ -1,6 +1,49 @@
+# Python
+# ---------------------------------
 .python-version
+__pycache__/
+*.pyc
 
-# any folder that has the pattern .tmp_dagster
 
+# Node.js / TypeScript
+# ---------------------------------
+# Dependencies
+dagster_project/hypergraph/node_modules/
+
+# Compiled TypeScript output
+dagster_project/hypergraph/dist/
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+
+# Dagster
+# ---------------------------------
 # Dagster temporary directories
 .tmp_dagster*
+
+
+# Data Files
+# ---------------------------------
+*.jsonl
+
+
+# OS & Editor Files
+# ---------------------------------
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# secrets
+dagster_project/hypergraph/.env
+
+# test files
+dagster_project/walrus_test.py
+
+# Python bytecode and cache
+__pycache__/
+*.pyc

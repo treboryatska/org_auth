@@ -120,7 +120,11 @@ class CryptoEcosystemsResource(ConfigurableResource):
                 return blob_id
 
             except subprocess.CalledProcessError as e:
-                log.error(f"Command failed: {' '.join(e.cmd)}\nStderr: {e.stderr}")
+                log.error(
+                    f"Command failed: {' '.join(e.cmd)}\n"
+                    f"Stdout: {e.stdout}\n"
+                    f"Stderr: {e.stderr}"
+                )
                 raise Failure("Git or script command failed.") from e
             finally:
                 log.info("Temporary directory cleaned up.")
